@@ -1,4 +1,4 @@
-# DPI Engine - Deep Packet Inspection System (Java Edition)
+﻿# DPI Engine - Deep Packet Inspection System (Java Edition)
 
 This document explains everything about this project - from basic networking concepts to the complete Java architecture. After reading this, you should understand exactly how packets flow through the system without needing to read the code.
 
@@ -31,36 +31,39 @@ User Traffic (PCAP) -> [DPI Engine] -> Filtered Traffic (PCAP)
 - Generates categorized reports
 
 ## 2. Networking Background
+
 ### The Network Stack (Layers)
 When you visit a website, data travels through multiple "layers":
+
 `	ext
-+---------------------------------------------------------+
-� Layer 7: Application � HTTP, TLS, DNS                   �
-+---------------------------------------------------------�
-� Layer 4: Transport   � TCP (reliable), UDP (fast)       �
-+---------------------------------------------------------�
-� Layer 3: Network     � IP addresses (routing)           �
-+---------------------------------------------------------�
-� Layer 2: Data Link   � MAC addresses (local network)    �
-+---------------------------------------------------------+
+┌─────────────────────────────────────────────────────────┐
+│ Layer 7: Application │ HTTP, TLS, DNS                   │
+├─────────────────────────────────────────────────────────┤
+│ Layer 4: Transport   │ TCP (reliable), UDP (fast)       │
+├─────────────────────────────────────────────────────────┤
+│ Layer 3: Network     │ IP addresses (routing)           │
+├─────────────────────────────────────────────────────────┤
+│ Layer 2: Data Link   │ MAC addresses (local network)    │
+└─────────────────────────────────────────────────────────┘
 `
 
 ### A Packet's Structure
 Every network packet is like a Russian nesting doll - headers wrapped inside headers:
+
 `	ext
-+------------------------------------------------------------------+
-� Ethernet Header (14 bytes)                                       �
-� +--------------------------------------------------------------+ �
-� � IP Header (20 bytes)                                         � �
-� � +----------------------------------------------------------+ � �
-� � � TCP Header (20 bytes)                                    � � �
-� � � +------------------------------------------------------+ � � �
-� � � � Payload (Application Data)                           � � � �
-� � � � e.g., TLS Client Hello with SNI                      � � � �
-� � � +------------------------------------------------------+ � � �
-� � +----------------------------------------------------------+ � �
-� +--------------------------------------------------------------+ �
-+------------------------------------------------------------------+
+┌──────────────────────────────────────────────────────────────────┐
+│ Ethernet Header (14 bytes)                                       │
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │ IP Header (20 bytes)                                         │ │
+│ │ ┌──────────────────────────────────────────────────────────┐ │ │
+│ │ │ TCP Header (20 bytes)                                    │ │ │
+│ │ │ ┌──────────────────────────────────────────────────────┐ │ │ │
+│ │ │ │ Payload (Application Data)                           │ │ │ │
+│ │ │ │ e.g., TLS Client Hello with SNI                      │ │ │ │
+│ │ │ └──────────────────────────────────────────────────────┘ │ │ │
+│ │ └──────────────────────────────────────────────────────────┘ │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
 `
 
 ### The Five-Tuple
@@ -82,40 +85,43 @@ Server Name Indication (SNI) is part of the TLS/HTTPS handshake. When you visit 
 This is the key to DPI: **Even though HTTPS is encrypted, the domain name is visible in the first packet!**
 
 ## 3. Project Overview
+
 **What This Project Does**
+
 `	ext
-+-------------+       +-------------+       +-------------+
-�  Wireshark  �       �  DPI Engine �       �   Output    �
-�   Capture   � --?   �   - Parse   � --?   �    PCAP     �
-� (input.pcap)�       �  - Classify �       �  (filtered) �
-+-------------+       �   - Block   �       +-------------+
-                      �  - Report   �
-                      +-------------+
+┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+│  Wireshark  │       │  DPI Engine │       │   Output    │
+│   Capture   │ ──►   │   - Parse   │ ──►   │    PCAP     │
+│ (input.pcap)│       │  - Classify │       │  (filtered) │
+└─────────────┘       │   - Block   │       └─────────────┘
+                      │  - Report   │
+                      └─────────────┘
 `
 
 ## 4. File Structure
+
 `	ext
 PacketAnalyzer-Java/
-+-- src/main/java/com/dpi/engine/
-�   +-- Main.java               # Entry point
-�   +-- simple/                 # Single-threaded mode
-�   �   +-- SimpleDPI.java
-�   +-- engine/                 # Multi-threaded orchestrator
-�   �   +-- DPIEngine.java
-�   +-- concurrent/             # Concurrency / Threads
-�   �   +-- ThreadSafeQueue.java
-�   �   +-- LoadBalancer.java
-�   �   +-- FastPath.java
-�   +-- dpi/                    # Payload Inspection
-�   �   +-- SNIExtractor.java
-�   �   +-- HTTPHostExtractor.java
-�   +-- pcap/                   # Binary file I/O
-�   �   +-- PcapReader.java
-�   +-- model/                  # Data structures
-�       +-- FiveTuple.java
-�       +-- Packet.java
-+-- pom.xml                     # Maven config (optional)
-+-- generate_test_pcap.py       # Test data generator
+├── src/main/java/com/dpi/engine/
+│   ├── Main.java               # Entry point
+│   ├── simple/                 # Single-threaded mode
+│   │   └── SimpleDPI.java
+│   ├── engine/                 # Multi-threaded orchestrator
+│   │   └── DPIEngine.java
+│   ├── concurrent/             # Concurrency / Threads
+│   │   ├── ThreadSafeQueue.java
+│   │   ├── LoadBalancer.java
+│   │   └── FastPath.java
+│   ├── dpi/                    # Payload Inspection
+│   │   ├── SNIExtractor.java
+│   │   └── HTTPHostExtractor.java
+│   ├── pcap/                   # Binary file I/O
+│   │   └── PcapReader.java
+│   └── model/                  # Data structures
+│       ├── FiveTuple.java
+│       └── Packet.java
+├── pom.xml                     # Maven config (optional)
+└── generate_test_pcap.py       # Test data generator
 `
 
 ## 5. The Journey of a Packet (Simple Version)
@@ -165,34 +171,37 @@ if (rules.isBlocked(flow.appType)) {
 The multi-threaded version (DPIEngine.java) adds parallelism for high performance:
 
 **Architecture Overview**
+
 `	ext
-                 +-----------------+
-                 �  Reader Thread  �
-                 �  (reads PCAP)   �
-                 +-----------------+
+                 ┌─────────────────┐
+                 │  Reader Thread  │
+                 │  (reads PCAP)   │
+                 └────────┬────────┘
              hash(5-tuple) % 2
-                  ?               ?
-        +-----------------+ +-----------------+
-        �   LB0 Thread    � �   LB1 Thread    �
-        � (Load Balancer) � � (Load Balancer) �
-        +-----------------+ +-----------------+
+                  ▼               ▼
+        ┌─────────────────┐ ┌─────────────────┐
+        │   LB0 Thread    │ │   LB1 Thread    │
+        │ (Load Balancer) │ │ (Load Balancer) │
+        └────────┬────────┘ └────────┬────────┘
              hash % 2           hash % 2
-            ?        ?         ?        ?
-       +--------++--------++--------++--------+
-       �FP0     ��FP1     ��FP2     ��FP3     �
-       �(Fast)  ��(Fast)  ��(Fast)  ��(Fast)  �
-       +--------++--------++--------++--------+
-            +-----------------------------+
-                           ?
-                 +-----------------+
-                 �  Writer Thread  �
-                 +-----------------+
+            ▼        ▼         ▼        ▼
+       ┌────────┐┌────────┐┌────────┐┌────────┐
+       │FP0     ││FP1     ││FP2     ││FP3     │
+       │(Fast)  ││(Fast)  ││(Fast)  ││(Fast)  │
+       └────┬───┘└────┬───┘└────┬───┘└────┬───┘
+            └─────────┴────┬────┴─────────┘
+                           ▼
+                 ┌─────────────────┐
+                 │  Writer Thread  │
+                 └─────────────────┘
 `
+
 **Why Consistent Hashing?**
 The Load Balancers use hash(5-tuple) so that every packet from the *same connection* always goes to the *same Fast Path (FP)* thread. This ensures the Fast Path thread can track the state of the conversation safely.
 
 **Thread-Safe Queue (Java)**
 Instead of basic locks, we built a highly efficient ThreadSafeQueue.java using Java's ReentrantLock and Condition.
+
 `java
 public void push(T item) throws InterruptedException {
     lock.lock();
@@ -210,6 +219,7 @@ public void push(T item) throws InterruptedException {
 
 ## 7. Deep Dive: SNI Extraction (The Magic)
 When you visit youtube.com, the TLS Client Hello structure looks like this:
+
 `	ext
 Byte 0: Content Type = 0x16 (Handshake)
 Byte 5: Handshake Type = 0x01 (Client Hello)
@@ -221,6 +231,7 @@ SNI Value: "www.youtube.com"  <- THE GOAL!
 `
 
 Our SNIExtractor.java manually navigates these raw bytes:
+
 `java
 public static String extract(byte[] payload, int length) {
     if (payload[0] != 22) return null; // Not handshake
@@ -246,6 +257,7 @@ public static String extract(byte[] payload, int length) {
 
 **Running (Without Maven)**
 If you have the compiled .jar file, you can run it directly using Java:
+
 `ash
 # Simple Mode
 java -jar target/packet-analyzer-2.0.0.jar test_dpi.pcap output.pcap --block-app YOUTUBE
@@ -256,6 +268,7 @@ java -jar target/packet-analyzer-2.0.0.jar test_dpi.pcap output.pcap --mt --lbs 
 
 **Compiling with Maven**
 If you want to edit the code and recompile it:
+
 `ash
 mvn clean package
 `
