@@ -91,7 +91,7 @@ public class DPIEngine {
         }
         AtomicBoolean atomicBoolean = new AtomicBoolean(true);
         Thread outputThread = new Thread(() -> {
-            while (outputRunning.get() || this.outputQueue.size() > 0) {
+            while (atomicBoolean.get() || this.outputQueue.size() > 0) {
                 try {
                     Packet pkt = this.outputQueue.tryPop();
                     if (pkt == null) {
@@ -199,20 +199,20 @@ public class DPIEngine {
         System.out.println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563");
         System.out.println("\u2551                   APPLICATION BREAKDOWN                       \u2551");
         System.out.println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563");
-        HashMap appCounts = new HashMap();
+        HashMap<AppType, Long> appCounts = new HashMap<>();
         TreeMap<String, AppType> detectedSnis = new TreeMap<String, AppType>();
         for (FastPath fp : this.fps) {
             fp.getAppStats().forEach((k, v) -> appCounts.merge(k, v, Long::sum));
             detectedSnis.putAll(fp.getDetectedDomains());
         }
-        ArrayList sorted = new ArrayList(appCounts.entrySet());
-        sorted.sort((a, b) -> Long.compare((Long)b.getValue(), (Long)a.getValue()));
+        ArrayList<Map.Entry<AppType, Long>> sorted = new ArrayList<>(appCounts.entrySet());
+        sorted.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
         long total = this.stats.totalPackets.get();
-        for (Map.Entry entry : sorted) {
+        for (Map.Entry<AppType, Long> entry : sorted) {
             double pct = total > 0L ? 100.0 * (double)((Long)entry.getValue()).longValue() / (double)total : 0.0;
             int bar = (int)(pct / 5.0);
             String barStr = "#".repeat(Math.max(bar, 0));
-            System.out.printf("\u2551 %-15s %8d %5.1f%% %-20s  \u2551%n", ((AppType)((Object)entry.getKey())).getDisplayName(), entry.getValue(), pct, barStr);
+            System.out.printf("\u2551 %-15s %8d %5.1f%% %-20s  \u2551%n", entry.getKey().getDisplayName(), entry.getValue(), pct, barStr);
         }
         System.out.println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d");
         if (!detectedSnis.isEmpty()) {

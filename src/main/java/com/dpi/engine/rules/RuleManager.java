@@ -69,9 +69,9 @@ public class RuleManager {
         for (AppType app : this.blockedApps) {
             System.out.println("[Rules] Blocked app: " + app.getDisplayName());
         }
-        Iterator<Object> iterator = this.blockedIps.iterator();
+        Iterator<Integer> iterator = this.blockedIps.iterator();
         while (iterator.hasNext()) {
-            int ip = (Integer)iterator.next();
+            int ip = iterator.next();
             System.out.println("[Rules] Blocked IP: " + FiveTuple.ipToString(ip));
         }
         for (String dom : this.blockedDomains) {

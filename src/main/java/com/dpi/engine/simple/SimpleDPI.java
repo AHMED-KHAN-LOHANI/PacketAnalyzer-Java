@@ -107,13 +107,13 @@ public class SimpleDPI {
         System.out.println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563");
         System.out.println("\u2551                    APPLICATION BREAKDOWN                     \u2551");
         System.out.println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563");
-        ArrayList sorted = new ArrayList(appStats.entrySet());
-        sorted.sort((a, b) -> Long.compare((Long)b.getValue(), (Long)a.getValue()));
-        for (Map.Entry entry : sorted) {
+        ArrayList<Map.Entry<AppType, Long>> sorted = new ArrayList<>(appStats.entrySet());
+        sorted.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+        for (Map.Entry<AppType, Long> entry : sorted) {
             double pct = totalPackets > 0L ? 100.0 * (double)((Long)entry.getValue()).longValue() / (double)totalPackets : 0.0;
             int barLen = (int)(pct / 5.0);
             String bar = "#".repeat(Math.max(barLen, 0));
-            String name = String.format("%-15s", ((AppType)((Object)entry.getKey())).getDisplayName());
+            String name = String.format("%-15s", entry.getKey().getDisplayName());
             String count = String.format("%8d", entry.getValue());
             System.out.printf("\u2551 %s %s %5.1f%% %-20s  \u2551%n", name, count, pct, bar);
         }
