@@ -25,7 +25,7 @@ Deep Packet Inspection (DPI) is a technology used to examine the contents of net
 *   **Security:** Detect malware or intrusion attempts
 
 **What Our DPI Engine Does:**
-User Traffic (PCAP) -> [DPI Engine] -> Filtered Traffic (PCAP)
+`User Traffic (PCAP) -> [DPI Engine] -> Filtered Traffic (PCAP)`
 - Identifies apps (YouTube, Facebook, Netflix, etc.)
 - Blocks based on rules
 - Generates categorized reports
@@ -35,7 +35,7 @@ User Traffic (PCAP) -> [DPI Engine] -> Filtered Traffic (PCAP)
 ### The Network Stack (Layers)
 When you visit a website, data travels through multiple "layers":
 
-`	ext
+```text
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 7: Application │ HTTP, TLS, DNS                   │
 ├─────────────────────────────────────────────────────────┤
@@ -45,12 +45,12 @@ When you visit a website, data travels through multiple "layers":
 ├─────────────────────────────────────────────────────────┤
 │ Layer 2: Data Link   │ MAC addresses (local network)    │
 └─────────────────────────────────────────────────────────┘
-`
+```
 
 ### A Packet's Structure
 Every network packet is like a Russian nesting doll - headers wrapped inside headers:
 
-`	ext
+```text
 ┌──────────────────────────────────────────────────────────────────┐
 │ Ethernet Header (14 bytes)                                       │
 │ ┌──────────────────────────────────────────────────────────────┐ │
@@ -64,7 +64,7 @@ Every network packet is like a Russian nesting doll - headers wrapped inside hea
 │ │ └──────────────────────────────────────────────────────────┘ │ │
 │ └──────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
-`
+```
 
 ### The Five-Tuple
 A connection (or "flow") is uniquely identified by 5 values:
@@ -77,7 +77,7 @@ A connection (or "flow") is uniquely identified by 5 values:
 *All packets with the same 5-tuple (regardless of direction) belong to the same connection!*
 
 ### What is SNI?
-Server Name Indication (SNI) is part of the TLS/HTTPS handshake. When you visit https://www.youtube.com:
+Server Name Indication (SNI) is part of the TLS/HTTPS handshake. When you visit `https://www.youtube.com`:
 1. Your browser sends a "Client Hello" message
 2. This message includes the domain name in plaintext (not encrypted yet!)
 3. The server uses this to know which certificate to send
@@ -88,7 +88,7 @@ This is the key to DPI: **Even though HTTPS is encrypted, the domain name is vis
 
 **What This Project Does**
 
-`	ext
+```text
 ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
 │  Wireshark  │       │  DPI Engine │       │   Output    │
 │   Capture   │ ──►   │   - Parse   │ ──►   │    PCAP     │
@@ -96,11 +96,11 @@ This is the key to DPI: **Even though HTTPS is encrypted, the domain name is vis
 └─────────────┘       │   - Block   │       └─────────────┘
                       │  - Report   │
                       └─────────────┘
-`
+```
 
 ## 4. File Structure
 
-`	ext
+```text
 PacketAnalyzer-Java/
 ├── src/main/java/com/dpi/engine/
 │   ├── Main.java               # Entry point
@@ -122,42 +122,42 @@ PacketAnalyzer-Java/
 │       └── Packet.java
 ├── pom.xml                     # Maven config (optional)
 └── generate_test_pcap.py       # Test data generator
-`
+```
 
 ## 5. The Journey of a Packet (Simple Version)
-Let's trace a single packet through SimpleDPI.java:
+Let's trace a single packet through `SimpleDPI.java`:
 
 **Step 1: Read PCAP File**
-`java
+```java
 PcapReader reader = new PcapReader("capture.pcap");
-`
+```
 Opens the binary file, reads the 24-byte global header, and validates the magic number.
 
 **Step 2: Parse Protocol Headers**
-`java
+```java
 Packet parsed = PacketParser.parse(rawPacket);
-`
+```
 Reads the Ethernet (14 bytes), IP (20 bytes), and TCP (20 bytes) headers to extract IPs and ports.
 
 **Step 3: Create Five-Tuple and Look Up Flow**
-`java
+```java
 FiveTuple tuple = new FiveTuple(srcIp, dstIp, srcPort, dstPort, protocol);
 Flow flow = connectionTracker.getOrCreateFlow(tuple);
-`
-Creates a bidirectional connection tracker. All packets in the same conversation map to the same Flow object.
+```
+Creates a bidirectional connection tracker. All packets in the same conversation map to the same `Flow` object.
 
 **Step 4: Extract SNI (Deep Packet Inspection)**
-`java
+```java
 if (parsed.getDestPort() == 443 && parsed.getPayloadLength() > 5) {
     String sni = SNIExtractor.extract(payload, payloadLen);
     if (sni != null) {
         flow.appType = AppType.fromSNI(sni); // Maps "youtube.com" to YOUTUBE
     }
 }
-`
+```
 
 **Step 5: Check Rules & Forward**
-`java
+```java
 if (rules.isBlocked(flow.appType)) {
     flow.blocked = true;
     dropped++;
@@ -165,14 +165,14 @@ if (rules.isBlocked(flow.appType)) {
     forwarded++;
     output.write(rawPacket);
 }
-`
+```
 
 ## 6. The Journey of a Packet (Multi-threaded Version)
-The multi-threaded version (DPIEngine.java) adds parallelism for high performance:
+The multi-threaded version (`DPIEngine.java`) adds parallelism for high performance:
 
 **Architecture Overview**
 
-`	ext
+```text
                  ┌─────────────────┐
                  │  Reader Thread  │
                  │  (reads PCAP)   │
@@ -194,15 +194,15 @@ The multi-threaded version (DPIEngine.java) adds parallelism for high performanc
                  ┌─────────────────┐
                  │  Writer Thread  │
                  └─────────────────┘
-`
+```
 
 **Why Consistent Hashing?**
-The Load Balancers use hash(5-tuple) so that every packet from the *same connection* always goes to the *same Fast Path (FP)* thread. This ensures the Fast Path thread can track the state of the conversation safely.
+The Load Balancers use `hash(5-tuple)` so that every packet from the *same connection* always goes to the *same Fast Path (FP)* thread. This ensures the Fast Path thread can track the state of the conversation safely.
 
 **Thread-Safe Queue (Java)**
-Instead of basic locks, we built a highly efficient ThreadSafeQueue.java using Java's ReentrantLock and Condition.
+Instead of basic locks, we built a highly efficient `ThreadSafeQueue.java` using Java's `ReentrantLock` and `Condition`.
 
-`java
+```java
 public void push(T item) throws InterruptedException {
     lock.lock();
     try {
@@ -215,12 +215,12 @@ public void push(T item) throws InterruptedException {
         lock.unlock();
     }
 }
-`
+```
 
 ## 7. Deep Dive: SNI Extraction (The Magic)
-When you visit youtube.com, the TLS Client Hello structure looks like this:
+When you visit `youtube.com`, the TLS Client Hello structure looks like this:
 
-`	ext
+```text
 Byte 0: Content Type = 0x16 (Handshake)
 Byte 5: Handshake Type = 0x01 (Client Hello)
 ... Skip 40+ bytes of Random Data and Ciphers ...
@@ -228,11 +228,11 @@ Byte 5: Handshake Type = 0x01 (Client Hello)
 Extension Type: 0x0000 (SNI)
 Extension Length: L
 SNI Value: "www.youtube.com"  <- THE GOAL!
-`
+```
 
-Our SNIExtractor.java manually navigates these raw bytes:
+Our `SNIExtractor.java` manually navigates these raw bytes:
 
-`java
+```java
 public static String extract(byte[] payload, int length) {
     if (payload[0] != 22) return null; // Not handshake
     
@@ -251,31 +251,31 @@ public static String extract(byte[] payload, int length) {
     }
     return null;
 }
-`
+```
 
 ## 8. Building and Running
 
 **Running (Without Maven)**
-If you have the compiled .jar file, you can run it directly using Java:
+If you have the compiled `.jar` file, you can run it directly using Java:
 
-`ash
+```bash
 # Simple Mode
 java -jar target/packet-analyzer-2.0.0.jar test_dpi.pcap output.pcap --block-app YOUTUBE
 
 # Multi-Threaded Mode (2 LBs, 4 FPs)
 java -jar target/packet-analyzer-2.0.0.jar test_dpi.pcap output.pcap --mt --lbs 2 --fps 4 --block-app YOUTUBE
-`
+```
 
 **Compiling with Maven**
 If you want to edit the code and recompile it:
 
-`ash
+```bash
 mvn clean package
-`
+```
 
 ## Summary
 This Java DPI engine demonstrates:
 *   **Network Protocol Parsing:** Manipulating raw binary data at the byte level
 *   **Deep Packet Inspection:** Looking inside encrypted connections (TLS/SNI)
 *   **Flow Tracking:** Managing stateful TCP/UDP connections via 5-tuple
-*   **Concurrency:** Scaling with Load Balancers, Fast Paths, and ReentrantLock Thread-Safe Queues
+*   **Concurrency:** Scaling with Load Balancers, Fast Paths, and `ReentrantLock` Thread-Safe Queues
