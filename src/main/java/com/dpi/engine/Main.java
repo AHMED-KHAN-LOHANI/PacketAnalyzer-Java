@@ -1,14 +1,29 @@
-/*
- * Decompiled with CFR 0.152.
- */
 package com.dpi.engine;
 
 import com.dpi.engine.engine.DPIEngine;
 import com.dpi.engine.rules.RuleManager;
 import com.dpi.engine.simple.SimpleDPI;
-import java.util.ArrayList;
 
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Main entry point for the DPI Engine.
+ * Supports both single-threaded and multi-threaded modes.
+ *
+ * Usage:
+ *   java -jar packet-analyzer.jar <input.pcap> <output.pcap> [options]
+ *
+ * Options:
+ *   --block-ip <ip>        Block source IP
+ *   --block-app <app>      Block application (YouTube, Facebook, etc.)
+ *   --block-domain <dom>   Block domain (substring match)
+ *   --mt                   Use multi-threaded mode
+ *   --lbs <n>              Number of load balancer threads (default: 2, MT only)
+ *   --fps <n>              FP threads per LB (default: 2, MT only)
+ */
 public class Main {
+
     private static void printUsage(String prog) {
         System.out.println();
         System.out.println("DPI Engine - Deep Packet Inspection System");
@@ -31,87 +46,76 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
-            Main.printUsage("java -jar packet-analyzer.jar");
+            printUsage("java -jar packet-analyzer.jar");
             System.exit(1);
             return;
         }
+
         String inputFile = args[0];
         String outputFile = args[1];
-        ArrayList<String> blockIps = new ArrayList<String>();
-        ArrayList<String> blockApps = new ArrayList<String>();
-        ArrayList<String> blockDomains = new ArrayList<String>();
+
+        List<String> blockIps = new ArrayList<>();
+        List<String> blockApps = new ArrayList<>();
+        List<String> blockDomains = new ArrayList<>();
         boolean multiThreaded = false;
         int numLbs = 2;
         int fpsPerLb = 2;
-        block16: for (int i = 2; i < args.length; ++i) {
+
+        // Parse options
+        for (int i = 2; i < args.length; i++) {
             String arg = args[i];
             switch (arg) {
-                case "--block-ip": {
-                    if (i + 1 >= args.length) continue block16;
-                    blockIps.add(args[++i]);
-                    continue block16;
-                }
-                case "--block-app": {
-                    if (i + 1 >= args.length) continue block16;
-                    blockApps.add(args[++i]);
-                    continue block16;
-                }
-                case "--block-domain": {
-                    if (i + 1 >= args.length) continue block16;
-                    blockDomains.add(args[++i]);
-                    continue block16;
-                }
-                case "--mt": {
+                case "--block-ip":
+                    if (i + 1 < args.length) blockIps.add(args[++i]);
+                    break;
+                case "--block-app":
+                    if (i + 1 < args.length) blockApps.add(args[++i]);
+                    break;
+                case "--block-domain":
+                    if (i + 1 < args.length) blockDomains.add(args[++i]);
+                    break;
+                case "--mt":
                     multiThreaded = true;
-                    continue block16;
-                }
-                case "--lbs": {
-                    if (i + 1 >= args.length) continue block16;
-                    numLbs = Integer.parseInt(args[++i]);
-                    continue block16;
-                }
-                case "--fps": {
-                    if (i + 1 >= args.length) continue block16;
-                    fpsPerLb = Integer.parseInt(args[++i]);
-                    continue block16;
-                }
-                default: {
+                    break;
+                case "--lbs":
+                    if (i + 1 < args.length) numLbs = Integer.parseInt(args[++i]);
+                    break;
+                case "--fps":
+                    if (i + 1 < args.length) fpsPerLb = Integer.parseInt(args[++i]);
+                    break;
+                default:
                     System.err.println("Unknown option: " + arg);
-                }
+                    break;
             }
         }
+
         if (multiThreaded) {
+            // Multi-threaded mode
             DPIEngine.Config cfg = new DPIEngine.Config();
             cfg.numLbs = numLbs;
             cfg.fpsPerLb = fpsPerLb;
+
             DPIEngine engine = new DPIEngine(cfg);
-            for (String ip : blockIps) {
-                engine.blockIp(ip);
-            }
-            for (String app : blockApps) {
-                engine.blockApp(app);
-            }
-            for (String dom : blockDomains) {
-                engine.blockDomain(dom);
-            }
+
+            for (String ip : blockIps) engine.blockIp(ip);
+            for (String app : blockApps) engine.blockApp(app);
+            for (String dom : blockDomains) engine.blockDomain(dom);
+
             if (!engine.process(inputFile, outputFile)) {
                 System.exit(1);
             }
         } else {
+            // Single-threaded mode (default)
             RuleManager rules = new RuleManager();
-            for (String ip : blockIps) {
-                rules.blockIp(ip);
-            }
-            for (String app : blockApps) {
-                rules.blockApp(app);
-            }
-            for (String dom : blockDomains) {
-                rules.blockDomain(dom);
-            }
+
+            for (String ip : blockIps) rules.blockIp(ip);
+            for (String app : blockApps) rules.blockApp(app);
+            for (String dom : blockDomains) rules.blockDomain(dom);
+
             SimpleDPI.run(inputFile, outputFile, rules);
         }
+
         System.out.println();
         System.out.println("Output written to: " + outputFile);
     }
 }
-

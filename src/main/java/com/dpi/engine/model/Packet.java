@@ -1,18 +1,22 @@
-/*
- * Decompiled with CFR 0.152.
- */
 package com.dpi.engine.model;
 
-import com.dpi.engine.model.FiveTuple;
-
+/**
+ * Self-contained packet for passing through the multi-threaded pipeline.
+ * Mirrors the C++ Packet struct in dpi_mt.cpp.
+ */
 public class Packet {
+
     public int id;
     public int tsSec;
     public int tsUsec;
-    public FiveTuple tuple = new FiveTuple(0, 0, 0, 0, 0);
-    public byte[] data = new byte[0];
+    public FiveTuple tuple;
+    public byte[] data;
     public int tcpFlags;
     public int payloadOffset;
     public int payloadLength;
-}
 
+    public Packet() {
+        tuple = new FiveTuple(0, 0, 0, 0, 0);
+        data = new byte[0];
+    }
+}

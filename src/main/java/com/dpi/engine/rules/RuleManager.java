@@ -1,82 +1,76 @@
-/*
- * Decompiled with CFR 0.152.
- */
 package com.dpi.engine.rules;
 
 import com.dpi.engine.model.AppType;
-import com.dpi.engine.model.FiveTuple;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
 
+import java.util.*;
+
+/**
+ * Manages blocking rules for IP addresses, application types, and domain patterns.
+ */
 public class RuleManager {
-    private final Set<Integer> blockedIps = new HashSet<Integer>();
-    private final Set<AppType> blockedApps = new HashSet<AppType>();
-    private final List<String> blockedDomains = new ArrayList<String>();
 
+    private final Set<Integer> blockedIps = new HashSet<>();
+    private final Set<AppType> blockedApps = new HashSet<>();
+    private final List<String> blockedDomains = new ArrayList<>(); // substring match
+
+    /** Add an IP address to the block list (dotted-decimal). */
     public void blockIp(String ip) {
-        this.blockedIps.add(FiveTuple.ipFromString(ip));
+        blockedIps.add(com.dpi.engine.model.FiveTuple.ipFromString(ip));
     }
 
+    /** Add an application type to the block list. */
     public void blockApp(String appName) {
         String upper = appName.toUpperCase().replace(" ", "_");
         for (AppType at : AppType.values()) {
-            if (!at.name().equals(upper) && !at.getDisplayName().equalsIgnoreCase(appName)) continue;
-            this.blockedApps.add(at);
-            return;
+            if (at.name().equals(upper) || at.getDisplayName().equalsIgnoreCase(appName)) {
+                blockedApps.add(at);
+                return;
+            }
         }
+        // If not found, still store for logging
         System.err.println("[Rules] Warning: unknown app type \"" + appName + "\"");
     }
 
+    /** Add a domain pattern (substring match against SNI). */
     public void blockDomain(String domain) {
-        this.blockedDomains.add(domain.toLowerCase());
+        blockedDomains.add(domain.toLowerCase());
     }
 
+    /** Check if traffic should be blocked. */
     public boolean isBlocked(String srcIpStr, AppType appType, String sni) {
-        int ip;
-        if (!srcIpStr.isEmpty() && this.blockedIps.contains(ip = FiveTuple.ipFromString(srcIpStr))) {
-            return true;
+        // IP check
+        if (!srcIpStr.isEmpty()) {
+            int ip = com.dpi.engine.model.FiveTuple.ipFromString(srcIpStr);
+            if (blockedIps.contains(ip)) return true;
         }
-        if (appType != AppType.UNKNOWN && this.blockedApps.contains((Object)appType)) {
-            return true;
-        }
+
+        // App check
+        if (appType != AppType.UNKNOWN && blockedApps.contains(appType)) return true;
+
+        // Domain check
         if (sni != null && !sni.isEmpty()) {
             String lowerSni = sni.toLowerCase();
-            for (String dom : this.blockedDomains) {
-                if (!lowerSni.contains(dom)) continue;
-                return true;
+            for (String dom : blockedDomains) {
+                if (lowerSni.contains(dom)) return true;
             }
         }
+
         return false;
     }
 
-    public Set<Integer> getBlockedIps() {
-        return Collections.unmodifiableSet(this.blockedIps);
-    }
-
-    public Set<AppType> getBlockedApps() {
-        return Collections.unmodifiableSet(this.blockedApps);
-    }
-
-    public List<String> getBlockedDomains() {
-        return Collections.unmodifiableList(this.blockedDomains);
-    }
+    public Set<Integer> getBlockedIps() { return Collections.unmodifiableSet(blockedIps); }
+    public Set<AppType> getBlockedApps() { return Collections.unmodifiableSet(blockedApps); }
+    public List<String> getBlockedDomains() { return Collections.unmodifiableList(blockedDomains); }
 
     public void printRules() {
-        for (AppType app : this.blockedApps) {
+        for (AppType app : blockedApps) {
             System.out.println("[Rules] Blocked app: " + app.getDisplayName());
         }
-        Iterator<Integer> iterator = this.blockedIps.iterator();
-        while (iterator.hasNext()) {
-            int ip = iterator.next();
-            System.out.println("[Rules] Blocked IP: " + FiveTuple.ipToString(ip));
+        for (int ip : blockedIps) {
+            System.out.println("[Rules] Blocked IP: " + com.dpi.engine.model.FiveTuple.ipToString(ip));
         }
-        for (String dom : this.blockedDomains) {
+        for (String dom : blockedDomains) {
             System.out.println("[Rules] Blocked domain: " + dom);
         }
     }
 }
-

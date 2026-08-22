@@ -1,101 +1,155 @@
-/*
- * Decompiled with CFR 0.152.
- */
 package com.dpi.engine.simple;
 
 import com.dpi.engine.dpi.HTTPHostExtractor;
 import com.dpi.engine.dpi.SNIExtractor;
-import com.dpi.engine.model.AppType;
-import com.dpi.engine.model.FiveTuple;
-import com.dpi.engine.model.ParsedPacket;
-import com.dpi.engine.model.RawPacket;
-import com.dpi.engine.parser.PacketParser;
+import com.dpi.engine.model.*;
 import com.dpi.engine.pcap.PcapReader;
 import com.dpi.engine.pcap.PcapWriter;
+import com.dpi.engine.parser.PacketParser;
 import com.dpi.engine.rules.RuleManager;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
+import java.util.*;
+
+/**
+ * Single-threaded DPI engine.
+ * Ported from main_working.cpp - processes packets one at a time.
+ */
 public class SimpleDPI {
+
     public static void run(String inputFile, String outputFile, RuleManager rules) throws Exception {
-        RawPacket raw;
         System.out.println();
         System.out.println("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557");
         System.out.println("\u2551                    DPI ENGINE v1.0                            \u2551");
-        System.out.println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d");
+        System.out.println("\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D");
         System.out.println();
+
         PcapReader reader = new PcapReader();
         reader.open(inputFile);
+
         PcapWriter writer = new PcapWriter(outputFile, reader);
-        LinkedHashMap<FiveTuple, FlowEntry> flows = new LinkedHashMap<FiveTuple, FlowEntry>();
-        long totalPackets = 0L;
-        long forwarded = 0L;
-        long dropped = 0L;
-        HashMap<AppType, Long> appStats = new HashMap<AppType, Long>();
+
+        // Flow table: FiveTuple -> Flow
+        Map<FiveTuple, FlowEntry> flows = new LinkedHashMap<>();
+
+        long totalPackets = 0;
+        long forwarded = 0;
+        long dropped = 0;
+        Map<AppType, Long> appStats = new HashMap<>();
+
         System.out.println("[DPI] Processing packets...");
+
+        RawPacket raw;
         while ((raw = reader.readNextPacket()) != null) {
-            int payloadLen;
-            int tcpOff;
-            int ipIhl;
-            int payloadOffset;
-            FiveTuple tuple;
-            ++totalPackets;
+            totalPackets++;
+
             ParsedPacket parsed = new ParsedPacket();
-            if (!PacketParser.parse(raw, parsed) || !parsed.hasIpv4() || !parsed.hasTcp() && !parsed.hasUdp() || (tuple = parsed.buildFiveTuple()) == null) continue;
-            FlowEntry flowEntry = flows.computeIfAbsent(tuple, FlowEntry::new);
-            ++flowEntry.packets;
-            flowEntry.bytes += (long)raw.getData().length;
+            if (!PacketParser.parse(raw, parsed)) continue;
+            if (!parsed.hasIpv4() || (!parsed.hasTcp() && !parsed.hasUdp())) continue;
+
+            // Create five-tuple
+            FiveTuple tuple = parsed.buildFiveTuple();
+            if (tuple == null) continue;
+
+            // Get or create flow
+            FlowEntry flow = flows.computeIfAbsent(tuple, FlowEntry::new);
+            flow.packets++;
+            flow.bytes += raw.getData().length;
+
             byte[] rawData = raw.getData();
-            if ((flowEntry.appType == AppType.UNKNOWN || flowEntry.appType == AppType.HTTPS) && flowEntry.sni.isEmpty() && parsed.hasTcp() && parsed.getDestPort() == 443) {
-                String sni;
-                payloadOffset = 14;
-                ipIhl = rawData[14] & 0xF;
-                if ((payloadOffset += ipIhl * 4) + 12 < rawData.length && (payloadOffset += (tcpOff = rawData[payloadOffset + 12] >> 4 & 0xF) * 4) < rawData.length && (payloadLen = rawData.length - payloadOffset) > 5 && (sni = SNIExtractor.extract(Arrays.copyOfRange(rawData, payloadOffset, rawData.length), payloadLen)) != null) {
-                    flowEntry.sni = sni;
-                    flowEntry.appType = AppType.fromSNI(sni);
-                }
-            }
-            if ((flowEntry.appType == AppType.UNKNOWN || flowEntry.appType == AppType.HTTP) && flowEntry.sni.isEmpty() && parsed.hasTcp() && parsed.getDestPort() == 80) {
-                payloadOffset = 14;
-                ipIhl = rawData[14] & 0xF;
-                if ((payloadOffset += ipIhl * 4) + 12 < rawData.length && (payloadOffset += (tcpOff = rawData[payloadOffset + 12] >> 4 & 0xF) * 4) < rawData.length) {
-                    payloadLen = rawData.length - payloadOffset;
-                    String host = HTTPHostExtractor.extract(Arrays.copyOfRange(rawData, payloadOffset, rawData.length), payloadLen);
-                    if (host != null) {
-                        flowEntry.sni = host;
-                        flowEntry.appType = AppType.fromSNI(host);
+
+            // --- SNI extraction for HTTPS ---
+            if ((flow.appType == AppType.UNKNOWN || flow.appType == AppType.HTTPS)
+                    && flow.sni.isEmpty() && parsed.hasTcp() && parsed.getDestPort() == 443) {
+
+                int payloadOffset = 14; // Ethernet
+                int ipIhl = rawData[14] & 0x0F;
+                payloadOffset += ipIhl * 4;
+
+                if (payloadOffset + 12 < rawData.length) {
+                    int tcpOff = (rawData[payloadOffset + 12] >> 4) & 0x0F;
+                    payloadOffset += tcpOff * 4;
+
+                    if (payloadOffset < rawData.length) {
+                        int payloadLen = rawData.length - payloadOffset;
+                        if (payloadLen > 5) {
+                            String sni = SNIExtractor.extract(
+                                    java.util.Arrays.copyOfRange(rawData, payloadOffset, rawData.length),
+                                    payloadLen);
+                            if (sni != null) {
+                                flow.sni = sni;
+                                flow.appType = AppType.fromSNI(sni);
+                            }
+                        }
                     }
                 }
             }
-            if (flowEntry.appType == AppType.UNKNOWN && (parsed.getDestPort() == 53 || parsed.getSrcPort() == 53)) {
-                flowEntry.appType = AppType.DNS;
-            }
-            if (flowEntry.appType == AppType.UNKNOWN) {
-                if (parsed.getDestPort() == 443) {
-                    flowEntry.appType = AppType.HTTPS;
-                } else if (parsed.getDestPort() == 80) {
-                    flowEntry.appType = AppType.HTTP;
+
+            // --- HTTP Host extraction ---
+            if ((flow.appType == AppType.UNKNOWN || flow.appType == AppType.HTTP)
+                    && flow.sni.isEmpty() && parsed.hasTcp() && parsed.getDestPort() == 80) {
+
+                int payloadOffset = 14;
+                int ipIhl = rawData[14] & 0x0F;
+                payloadOffset += ipIhl * 4;
+
+                if (payloadOffset + 12 < rawData.length) {
+                    int tcpOff = (rawData[payloadOffset + 12] >> 4) & 0x0F;
+                    payloadOffset += tcpOff * 4;
+
+                    if (payloadOffset < rawData.length) {
+                        int payloadLen = rawData.length - payloadOffset;
+                        String host = HTTPHostExtractor.extract(
+                                java.util.Arrays.copyOfRange(rawData, payloadOffset, rawData.length),
+                                payloadLen);
+                        if (host != null) {
+                            flow.sni = host;
+                            flow.appType = AppType.fromSNI(host);
+                        }
+                    }
                 }
             }
-            if (!flowEntry.blocked) {
-                flowEntry.blocked = rules.isBlocked(parsed.getSrcIp() != null ? parsed.getSrcIp() : "", flowEntry.appType, flowEntry.sni);
-                if (flowEntry.blocked) {
-                    System.out.println("[BLOCKED] " + parsed.getSrcIp() + " -> " + parsed.getDestIp() + " (" + flowEntry.appType.getDisplayName() + (String)(!flowEntry.sni.isEmpty() ? ": " + flowEntry.sni : "") + ")");
+
+            // --- DNS classification ---
+            if (flow.appType == AppType.UNKNOWN
+                    && (parsed.getDestPort() == 53 || parsed.getSrcPort() == 53)) {
+                flow.appType = AppType.DNS;
+            }
+
+            // --- Port-based fallback ---
+            if (flow.appType == AppType.UNKNOWN) {
+                if (parsed.getDestPort() == 443) flow.appType = AppType.HTTPS;
+                else if (parsed.getDestPort() == 80) flow.appType = AppType.HTTP;
+            }
+
+            // --- Check blocking rules ---
+            if (!flow.blocked) {
+                flow.blocked = rules.isBlocked(
+                        parsed.getSrcIp() != null ? parsed.getSrcIp() : "",
+                        flow.appType, flow.sni);
+                if (flow.blocked) {
+                    System.out.println("[BLOCKED] " + parsed.getSrcIp() + " -> " + parsed.getDestIp()
+                            + " (" + flow.appType.getDisplayName()
+                            + (!flow.sni.isEmpty() ? ": " + flow.sni : "") + ")");
                 }
             }
-            appStats.merge(flowEntry.appType, 1L, Long::sum);
-            if (flowEntry.blocked) {
-                ++dropped;
-                continue;
+
+            // Update app stats
+            appStats.merge(flow.appType, 1L, Long::sum);
+
+            // Forward or drop
+            if (flow.blocked) {
+                dropped++;
+            } else {
+                forwarded++;
+                writer.writeRaw(raw.getTimestampSec(), raw.getTimestampUsec(),
+                        raw.getOrigLen(), raw.getData());
             }
-            ++forwarded;
-            writer.writeRaw(raw.getTimestampSec(), raw.getTimestampUsec(), raw.getOrigLen(), raw.getData());
         }
+
         reader.close();
         writer.close();
+
+        // --- Print report (matches C++ output) ---
         System.out.println();
         System.out.println("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557");
         System.out.println("\u2551                      PROCESSING REPORT                       \u2551");
@@ -107,38 +161,46 @@ public class SimpleDPI {
         System.out.println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563");
         System.out.println("\u2551                    APPLICATION BREAKDOWN                     \u2551");
         System.out.println("\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563");
-        ArrayList<Map.Entry<AppType, Long>> sorted = new ArrayList<>(appStats.entrySet());
+
+        // Sort by count descending
+        List<Map.Entry<AppType, Long>> sorted = new ArrayList<>(appStats.entrySet());
         sorted.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+
         for (Map.Entry<AppType, Long> entry : sorted) {
-            double pct = totalPackets > 0L ? 100.0 * (double)((Long)entry.getValue()).longValue() / (double)totalPackets : 0.0;
-            int barLen = (int)(pct / 5.0);
+            double pct = totalPackets > 0 ? 100.0 * entry.getValue() / totalPackets : 0;
+            int barLen = (int) (pct / 5);
             String bar = "#".repeat(Math.max(barLen, 0));
             String name = String.format("%-15s", entry.getKey().getDisplayName());
             String count = String.format("%8d", entry.getValue());
             System.out.printf("\u2551 %s %s %5.1f%% %-20s  \u2551%n", name, count, pct, bar);
         }
-        System.out.println("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d");
+
+        System.out.println("\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D");
+
+        // Unique SNIs
         System.out.println();
         System.out.println("[Detected Applications/Domains]");
-        for (FlowEntry flowEntry : flows.values()) {
-            if (flowEntry.sni.isEmpty()) continue;
-            System.out.println("  - " + flowEntry.sni + " -> " + flowEntry.appType.getDisplayName());
+        for (FlowEntry f : flows.values()) {
+            if (!f.sni.isEmpty()) {
+                System.out.println("  - " + f.sni + " -> " + f.appType.getDisplayName());
+            }
         }
+
         System.out.println();
         System.out.println("Output written to: " + outputFile);
     }
 
+    /**
+     * Simple flow entry matching the C++ Flow struct in main_working.cpp.
+     */
     public static class FlowEntry {
         FiveTuple tuple;
         AppType appType = AppType.UNKNOWN;
         String sni = "";
-        long packets = 0L;
-        long bytes = 0L;
+        long packets = 0;
+        long bytes = 0;
         boolean blocked = false;
 
-        FlowEntry(FiveTuple tuple) {
-            this.tuple = tuple;
-        }
+        FlowEntry(FiveTuple tuple) { this.tuple = tuple; }
     }
 }
-
